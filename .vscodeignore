@@ -1,0 +1,9 @@
+.vscode/**
+.vscode-test/**
+node_modules/**
+.git/**
+.gitignore
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+error.wav
