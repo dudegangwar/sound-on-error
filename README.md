@@ -86,9 +86,16 @@ Available options:
 
 - **macOS** — Uses `afplay`
 - **Linux** — Tries `paplay`, `aplay`, `ffplay`, `mpg123`, `mpg321`, then `play`
-- **Windows** — Uses PowerShell media playback
+- **Windows** — Uses PowerShell media playback (additional `cmd /c start` fallback added for trouble‑meeting formats)
 
 Terminal keyword detection relies on VS Code shell integration events.
+
+> **Note:** the extension runs on the host that executes your workspace code.  if you
+> are working in a remote/WSL container the audio code will also run there.  a
+> Windows path selected from the UI may not be accessible inside the container
+> and, in general, remote sessions often have no sound output at all.  if you
+> don't hear anything on a remote workspace make sure the extension is running
+> locally or choose a file that exists in the remote environment.
 
 ---
 

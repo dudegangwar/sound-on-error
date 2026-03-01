@@ -384,13 +384,25 @@ async function resolveSoundPath(context) {
 }
 
 function resolveConfiguredPath(rawPath) {
+  // The user may supply a path from another OS (e.g. a Windows drive letter
+  // while the extension is running in a remote Linux/WSL session).  the
+  // built-in `path` module is platform-specific, so a Windows absolute path
+  // such as "C:\\foo" would be treated as *relative* when running on a
+  // non-Windows host.  we need to detect those cases manually so the
+  // resolution logic doesn't accidentally turn a perfectly valid custom
+  // path into a workspace‑relative garbage string.
+  const looksLikeWindowsAbsolute = (p) => {
+    // Drive-letter paths and UNC shares
+    return /^[a-zA-Z]:[\\/]/.test(p) || /^\\\\/.test(p);
+  };
+
   let candidate = rawPath;
 
   if (candidate.startsWith('~')) {
     candidate = path.join(os.homedir(), candidate.slice(1));
   }
 
-  if (path.isAbsolute(candidate)) {
+  if (path.isAbsolute(candidate) || looksLikeWindowsAbsolute(candidate)) {
     return path.normalize(candidate);
   }
 
@@ -446,12 +458,23 @@ function playOnWindows(soundPath) {
     createWindowsShellCandidate('pwsh.exe', 'WMPlayer.OCX', wmpScript)
   ];
 
+  // the old SoundPlayer backend only understands WAV, so keep it around in
+  // case a user deliberately picks a WAV file.
   if (extension === '.wav') {
     candidates.push(
       createWindowsShellCandidate('powershell.exe', 'System.Media.SoundPlayer', soundPlayerScript),
       createWindowsShellCandidate('pwsh.exe', 'System.Media.SoundPlayer', soundPlayerScript)
     );
   }
+
+  // final fallback: use `cmd /c start` which hands the file off to whatever is
+  // registered on the host.  this will pop up a player window but it avoids
+  // codec/feature problems with the PowerShell APIs.
+  candidates.push({
+    label: 'cmd.exe start (default handler)',
+    command: 'cmd.exe',
+    args: ['/c', 'start', '""', soundPath]
+  });
 
   logToOutput(`Windows playback candidates prepared: ${candidates.map((candidate) => candidate.label).join(', ')}.`);
 
@@ -463,6 +486,12 @@ function playOnWindows(soundPath) {
 
 function spawnWithFallback(candidates, failureMessage) {
   const attempt = (index) => {
+    // log candidate scripts so we can troubleshoot weird failures (e.g. paths
+    // containing quotes or unicode); the script is small enough that it's safe
+    // to show in the output channel.
+    if (index < candidates.length) {
+      logToOutput(`candidate script: ${JSON.stringify(candidates[index])}`);
+    }
     if (index >= candidates.length) {
       logToOutput(`All playback candidates failed (${candidates.length} attempted).`);
       void warnMissingPlayerOnce(failureMessage);
@@ -590,7 +619,12 @@ async function warnMissingPlayerOnce(message) {
   }
 
   warnedMissingPlayer = true;
-  const action = await vscode.window.showWarningMessage(message, 'Show Logs');
+  // include a hint about opening the output channel; the logs contain the
+  // failing command line and any stderr so they are extremely useful.
+  const action = await vscode.window.showWarningMessage(
+    message + ' (see output channel for details)',
+    'Show Logs'
+  );
   if (action === 'Show Logs') {
     showLogs();
   }
